@@ -1,0 +1,70 @@
+#version: "3.9"
+
+name: immich
+
+services:
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    env_file:
+      - .env
+    volumes:
+      - ${UPLOAD_LOCATION}:/data
+      
+      - /mnt/user/immich/photos:/external/photos:ro
+    ports:
+      - "8080:2283"
+    depends_on:
+      - redis
+      - database
+      - immich-machine-learning
+    networks:
+      - immich-net
+    restart: unless-stopped
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}
+    env_file:
+      - .env
+    environment:
+      MACHINE_LEARNING_HOST: 0.0.0.0
+      MACHINE_LEARNING_PORT: 3003
+      MACHINE_LEARNING_WORKERS: 1
+      MACHINE_LEARNING_WORKER_TIMEOUT: 120
+
+    volumes:
+      - model-cache:/cache
+    networks:
+      - immich-net
+    restart: unless-stopped
+
+  redis:
+    container_name: immich_redis
+    image: docker.io/valkey/valkey:9
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - immich-net
+    restart: unless-stopped
+
+  database:
+    container_name: immich_postgres
+    image: tensorchord/pgvecto-rs:pg14-v0.2.0
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_DB: ${DB_DATABASE_NAME}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - ${DB_DATA_LOCATION}:/var/lib/postgresql/data
+    shm_size: "128mb"
+    networks:
+      - immich-net
+    restart: unless-stopped
+
+volumes:
+  model-cache:
+
+networks:
+  immich-net:
+    external: true
